@@ -25,6 +25,8 @@ jobs:
   build:
     needs: fetch_versions
     runs-on: ubuntu-latest
+    env:
+      TZ: Asia/Shanghai
     strategy:
       matrix:
         include:
@@ -54,21 +56,28 @@ jobs:
             libelf-dev bc fakeroot cpio rsync dwarves libudev-dev xz-utils \
             debhelper dh-python ccache tar gzip
 
-      - name: Setup ccache
+      - name: Cache Kernel Source
         uses: actions/cache@v4
         with:
-          path: ~/.ccache
-          key: ${{ runner.os }}-ccache-${{ github.run_id }}
-          restore-keys: |
-            ${{ runner.os }}-ccache-
-
+          path: ./linux-${{ matrix.version }}.tar.gz
+          key: linux-source-${{ matrix.version }}
+      
       - name: Download and Prepare Kernel Source
         run: |
           VERSION=${{ matrix.version }}
-          wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
+          if [ ! -f "linux-${VERSION}.tar.gz" ]; then
+            echo "Kernel source archive not found, downloading..."
+            if [[ $VERSION =~ -rc ]]; then
+              wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
+            else
+              wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
+            fi
+          else
+            echo "Using cached kernel source linux-${VERSION}.tar.gz"
+          fi
           tar -xf linux-${VERSION}.tar.gz
           mv linux-${VERSION} linux-src
-
+            
       - name: Configure Kernel
         working-directory: ./linux-src
         run: |
@@ -131,7 +140,8 @@ jobs:
         uses: ncipollo/release-action@v1
         with:
           name: "Linux Kernel Automatic Release"
-          tag: "auto-${{ github.run_number }}"
+         # tag: "auto-${{ github.run_number }}"
+          tag: "auto-$(TZ=Asia/Shanghai date +%Y%m%d-%H%M)"
           commit: ${{ github.sha }}
           allowUpdates: true
           removeArtifacts: false
