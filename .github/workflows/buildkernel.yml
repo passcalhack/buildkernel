@@ -1,0 +1,156 @@
+name: Build and Release Linux Kernel
+
+on:
+  schedule:
+    - cron: '0 18 * * 0,2,4,6' # 每周1、3、5、7（UTC时间18点=北京时间2点）
+  workflow_dispatch:
+
+jobs:
+  fetch_versions:
+    runs-on: ubuntu-latest
+    outputs:
+      stable_version: ${{ steps.setvars.outputs.stable_version }}
+      mainline_version: ${{ steps.setvars.outputs.mainline_version }}
+    steps:
+      - name: Fetch Stable and Mainline Versions
+        id: setvars
+        run: |
+          sudo apt-get update && sudo apt-get install -y jq
+          KERNEL_JSON=$(curl -s https://www.kernel.org/releases.json)
+          STABLE_VERSION=$(echo "$KERNEL_JSON" | jq -r '.releases[] | select(.moniker=="stable") | .version' | head -n1)
+          MAINLINE_VERSION=$(echo "$KERNEL_JSON" | jq -r '.releases[] | select(.moniker=="mainline") | .version' | head -n1)
+          echo "stable_version=$STABLE_VERSION" >> $GITHUB_OUTPUT
+          echo "mainline_version=$MAINLINE_VERSION" >> $GITHUB_OUTPUT
+
+  build:
+    needs: fetch_versions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - version: ${{ needs.fetch_versions.outputs.stable_version }}
+            type: stable
+          - version: ${{ needs.fetch_versions.outputs.mainline_version }}
+            type: mainline
+    name: Build Linux Kernel ${{ matrix.version }} (${{ matrix.type }})
+    steps:
+      - name: Free Disk Space
+        uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: true
+          android: true
+          dotnet: true
+          haskell: true
+          large-packages: true
+          swap-storage: true
+
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+
+      - name: Setup Build Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential libncurses-dev bison flex libssl-dev \
+            libelf-dev bc fakeroot cpio rsync dwarves libudev-dev xz-utils \
+            debhelper dh-python ccache tar gzip
+
+      - name: Setup ccache
+        uses: actions/cache@v4
+        with:
+          path: ~/.ccache
+          key: ${{ runner.os }}-ccache-${{ github.run_id }}
+          restore-keys: |
+            ${{ runner.os }}-ccache-
+
+      - name: Download and Prepare Kernel Source
+        run: |
+          VERSION=${{ matrix.version }}
+          MAJOR="${VERSION%%.*}"
+          if [[ $VERSION =~ -rc ]]; then
+            # Testing version (mainline) download link
+            wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
+          else
+            # Stable version download link
+            wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
+          fi
+          tar -xf linux-${VERSION}.tar.gz
+          mv linux-${VERSION} linux-src
+
+      - name: Configure Kernel
+        working-directory: ./linux-src
+        run: |
+          if [ -f /boot/config-$(uname -r) ]; then
+            cp /boot/config-$(uname -r) .config
+          else
+            make defconfig
+          fi
+          yes "" | make oldconfig
+
+      - name: Patch Kernel Config
+        working-directory: ./linux-src
+        run: |
+          sed -i 's/^CONFIG_SYSTEM_TRUSTED_KEYS=.*/CONFIG_SYSTEM_TRUSTED_KEYS=""/' .config
+          sed -i 's/^CONFIG_SYSTEM_REVOCATION_KEYS=.*/CONFIG_SYSTEM_REVOCATION_KEYS=""/' .config
+          sed -i 's/^CONFIG_MODULE_SIG=.*/CONFIG_MODULE_SIG=n/' .config
+          grep -q '^CONFIG_SYSTEM_TRUSTED_KEYS=' .config || echo 'CONFIG_SYSTEM_TRUSTED_KEYS=""' >> .config
+          grep -q '^CONFIG_SYSTEM_REVOCATION_KEYS=' .config || echo 'CONFIG_SYSTEM_REVOCATION_KEYS=""' >> .config
+          grep -q '^CONFIG_MODULE_SIG=' .config || echo 'CONFIG_MODULE_SIG=n' >> .config
+          make olddefconfig
+
+      - name: Compile Kernel and Create DEBs
+        working-directory: ./linux-src
+        env:
+          CCACHE_DIR: ~/.ccache
+        run: |
+          export PATH="/usr/lib/ccache:$PATH"
+          make -j$(nproc) bindeb-pkg LOCALVERSION=-${{ matrix.type }} KDEB_PKGVERSION=$(date +%Y%m%d)-1
+          mkdir -p ../artifacts
+          mv ../*.deb ../artifacts/
+
+      - name: Filter and Package Only DEBs
+        working-directory: ./artifacts
+        run: |
+          # 移除 debug 包
+          rm -f linux-image-*-dbg*.deb
+          # 压缩剩余的 .deb 包
+          tar -czvf ../linux-${{ matrix.version }}-${{ matrix.type }}.tar.gz *.deb
+          sha256sum *.deb > SHA256SUMS.txt
+          sha256sum ../linux-${{ matrix.version }}-${{ matrix.type }}.tar.gz >> SHA256SUMS.txt
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.version }}-${{ matrix.type }}
+          path: |
+            artifacts/*.deb
+            artifacts/SHA256SUMS.txt
+            linux-${{ matrix.version }}-${{ matrix.type }}.tar.gz
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: release-${{ needs.build.outputs.kernel_version }}-${{ needs.build.outputs.release_tag }}
+          path: ./release
+
+      - name: Create GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: "Linux Kernel Automatic Release ${{ needs.build.outputs.kernel_version }} (${{ needs.build.outputs.release_tag }})"
+          tag: "auto-${{ github.run_number }}"
+          commit: ${{ github.sha }}
+          allowUpdates: true
+          removeArtifacts: false
+          token: ${{ secrets.RELEASE_TOKEN }}
+          artifacts: "./release/**/*"
+          body: |
+            ## Automatic Linux Kernel Build
+            This release includes:
+            - Stable & Mainline latest kernel versions
+            - DEB packages (without debug files)
+            - tar.gz archives
+            - SHA256 checksum file
