@@ -2,7 +2,7 @@ name: Build and Release Linux Kernel
 
 on:
   schedule:
-    - cron: '0 18 * * 0,2,4,6' # 每周1、3、5、7（UTC时间18点=北京时间2点）
+    - cron: '0 18 * * 0,2,4,6'
   workflow_dispatch:
 
 jobs:
@@ -65,14 +65,7 @@ jobs:
       - name: Download and Prepare Kernel Source
         run: |
           VERSION=${{ matrix.version }}
-          MAJOR="${VERSION%%.*}"
-          if [[ $VERSION =~ -rc ]]; then
-            # Testing version (mainline) download link
-            wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
-          else
-            # Stable version download link
-            wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
-          fi
+          wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
           tar -xf linux-${VERSION}.tar.gz
           mv linux-${VERSION} linux-src
 
@@ -110,9 +103,7 @@ jobs:
       - name: Filter and Package Only DEBs
         working-directory: ./artifacts
         run: |
-          # 移除 debug 包
           rm -f linux-image-*-dbg*.deb
-          # 压缩剩余的 .deb 包
           tar -czvf ../linux-${{ matrix.version }}-${{ matrix.type }}.tar.gz *.deb
           sha256sum *.deb > SHA256SUMS.txt
           sha256sum ../linux-${{ matrix.version }}-${{ matrix.type }}.tar.gz >> SHA256SUMS.txt
@@ -131,16 +122,15 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Download All Artifacts
+      - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-${{ matrix.version }}-${{ matrix.type }}  # 确保与上传时名称匹配
-          path: ./release
+          path: ./release  # 直接全部下载到 ./release，不指定name！
 
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          name: "Linux Kernel Automatic Release ${{ needs.build.outputs.kernel_version }} (${{ needs.build.outputs.release_tag }})"
+          name: "Linux Kernel Automatic Release"
           tag: "auto-${{ github.run_number }}"
           commit: ${{ github.sha }}
           allowUpdates: true
@@ -154,3 +144,4 @@ jobs:
             - DEB packages (without debug files)
             - tar.gz archives
             - SHA256 checksum file
+
