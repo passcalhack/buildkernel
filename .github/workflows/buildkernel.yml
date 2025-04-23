@@ -134,7 +134,7 @@ jobs:
       - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          name: release-${{ needs.build.outputs.kernel_version }}-${{ needs.build.outputs.release_tag }}
+          name: release-${{ matrix.version }}-${{ matrix.type }}  # 确保与上传时名称匹配
           path: ./release
 
       - name: Create GitHub Release
