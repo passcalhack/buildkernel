@@ -131,17 +131,18 @@ jobs:
     runs-on: ubuntu-latest
     if: always()
     steps:
-      - name: Download all artifacts
+      - name: Download All Artifacts
         uses: actions/download-artifact@v4
         with:
-          path: ./release  # 直接全部下载到 ./release，不指定name！
-
+          path: ./release
+          # 遍历下载所有 artifacts，因为你使用了 matrix 多版本
+          pattern: release-*
+  
       - name: Create GitHub Release
         uses: ncipollo/release-action@v1
         with:
-          name: "Linux Kernel Automatic Release"
-         # tag: "auto-${{ github.run_number }}"
-          tag: "auto-$(TZ=Asia/Shanghai date +%Y%m%d-%H%M)"
+          name: "Linux Kernel Automatic Release ${{ github.run_id }}"
+          tag: "auto-${{ github.run_id }}"
           commit: ${{ github.sha }}
           allowUpdates: true
           removeArtifacts: false
@@ -150,8 +151,8 @@ jobs:
           body: |
             ## Automatic Linux Kernel Build
             This release includes:
-            - Stable & Mainline latest kernel versions
+            - Latest stable & mainline kernel builds
             - DEB packages (without debug files)
-            - tar.gz archives
+            - Tar.gz bundles
             - SHA256 checksum file
 
