@@ -68,7 +68,7 @@ jobs:
           if [ ! -f "linux-${VERSION}.tar.gz" ]; then
             echo "Kernel source archive not found, downloading..."
           if [[ $VERSION =~ -rc ]]; then
-            wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable-rc.git/snapshot/linux-stable-rc-${VERSION}.tar.gz -O linux-${VERSION}.tar.gz
+            wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux-stable-rc.git/snapshot/linux-stable-rc-${VERSION}.tar.gz
           else
             wget https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/snapshot/linux-${VERSION}.tar.gz
           fi
