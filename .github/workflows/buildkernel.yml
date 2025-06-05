@@ -44,7 +44,7 @@ jobs:
           - version: ${{ needs.fetch_versions.outputs.mainline_version }}
             date: ${{ needs.fetch_versions.outputs.mainline_date }}
             type: mainline
-    name: Build Linux Kernel ${{ matrix.version }} (${{ matrix.type }})- ${{ matrix.date }}
+    name: Build Kernel ${{ matrix.version }} (${{ matrix.type }})-${{ matrix.date }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
