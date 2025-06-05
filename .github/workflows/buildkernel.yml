@@ -10,17 +10,25 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       stable_version: ${{ steps.setvars.outputs.stable_version }}
+      stable_date: ${{ steps.setvars.outputs.stable_date }}
       mainline_version: ${{ steps.setvars.outputs.mainline_version }}
+      mainline_date: ${{ steps.setvars.outputs.mainline_date }}
     steps:
       - name: Fetch Stable and Mainline Versions
         id: setvars
         run: |
           sudo apt-get update && sudo apt-get install -y jq
           KERNEL_JSON=$(curl -s https://www.kernel.org/releases.json)
-          STABLE_VERSION=$(echo "$KERNEL_JSON" | jq -r '.releases[] | select(.moniker=="stable") | .version' | head -n1)
-          MAINLINE_VERSION=$(echo "$KERNEL_JSON" | jq -r '.releases[] | select(.moniker=="mainline") | .version' | head -n1)
+          STABLE_INFO=$(echo "$KERNEL_JSON" | jq -r '.releases[] | select(.moniker=="stable") | "\(.version) \(.released.isodate)"' | head -n1)
+          MAINLINE_INFO=$(echo "$KERNEL_JSON" | jq -r '.releases[] | select(.moniker=="mainline") | "\(.version) \(.released.isodate)"' | head -n1)  
+          STABLE_VERSION=$(echo "$STABLE_INFO" | awk '{print $1}')
+          STABLE_DATE=$(echo "$STABLE_INFO" | awk '{print $2}')
+          MAINLINE_VERSION=$(echo "$MAINLINE_INFO" | awk '{print $1}')
+          MAINLINE_DATE=$(echo "$MAINLINE_INFO" | awk '{print $2}') 
           echo "stable_version=$STABLE_VERSION" >> $GITHUB_OUTPUT
+          echo "stable_date=$STABLE_DATE" >> $GITHUB_OUTPUT
           echo "mainline_version=$MAINLINE_VERSION" >> $GITHUB_OUTPUT
+          echo "mainline_date=$MAINLINE_DATE" >> $GITHUB_OUTPUT
 
   build:
     needs: fetch_versions
@@ -31,10 +39,12 @@ jobs:
       matrix:
         include:
           - version: ${{ needs.fetch_versions.outputs.stable_version }}
+            date: ${{ needs.fetch_versions.outputs.stable_date }}
             type: stable
           - version: ${{ needs.fetch_versions.outputs.mainline_version }}
+            date: ${{ needs.fetch_versions.outputs.mainline_date }}
             type: mainline
-    name: Build Linux Kernel ${{ matrix.version }} (${{ matrix.type }})
+    name: Build Linux Kernel ${{ matrix.version }} (${{ matrix.type }})- ${{ matrix.date }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
