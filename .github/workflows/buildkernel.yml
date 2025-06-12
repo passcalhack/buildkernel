@@ -40,13 +40,11 @@ jobs:
         include:
           - version: ${{ needs.fetch_versions.outputs.stable_version }}
             date: ${{ needs.fetch_versions.outputs.stable_date }}
-           # type: stable
-            type: 稳定
+            type: stable
           - version: ${{ needs.fetch_versions.outputs.mainline_version }}
             date: ${{ needs.fetch_versions.outputs.mainline_date }}
-            #type: mainline
-            type: 主尝鲜
-    name: Kernel ${{ matrix.version }} (${{ matrix.type }})-${{ matrix.date }}
+            type: mainline
+    name: Kernel ${{ matrix.version }} ${{ matrix.type }}${{ matrix.date }}
     steps:
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
